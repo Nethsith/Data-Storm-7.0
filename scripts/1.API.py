@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 # CONFIG  (edit these freely)
 # ─────────────────────────────────────────────
-LOCATIONS_CSV   = "locations.csv"
+LOCATIONS_CSV   = "raw data/outlet_coordinates.csv"
 OUTPUT_CSV      = "monthly_density.csv"
 BUFFER_METERS   = 1_000          # 1 km radius
 YEARS           = list(range(2020, 2026))   # 2020 – 2025 inclusive
@@ -62,9 +62,29 @@ def load_locations(path: str = LOCATIONS_CSV) -> pd.DataFrame:
     else:
         log.warning("%s not found — using built-in defaults", path)
         df = pd.DataFrame(DEFAULT_LOCATIONS)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         df.to_csv(path, index=False)
         log.info("Saved default locations to %s", path)
-    return df
+
+    lower_cols = {c.lower(): c for c in df.columns}
+    if {"latitude", "longitude"}.issubset(lower_cols):
+        lat_col = lower_cols["latitude"]
+        lon_col = lower_cols["longitude"]
+        name_col = lower_cols.get("location_name") or lower_cols.get("outlet_id")
+
+        df = df.rename(columns={
+            lat_col: "latitude",
+            lon_col: "longitude",
+        })
+
+        if name_col:
+            df = df.rename(columns={name_col: "location_name"})
+        else:
+            df["location_name"] = [f"loc_{i+1}" for i in range(len(df))]
+    else:
+        raise ValueError("Locations file must include Latitude and Longitude columns.")
+
+    return df[["location_name", "latitude", "longitude"]]
 
 
 # ─────────────────────────────────────────────
