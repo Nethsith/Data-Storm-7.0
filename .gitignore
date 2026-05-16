@@ -1,5 +1,6 @@
 # Data files and large artifacts
 *.csv
+!monthly_density.csv
 !raw data/
 !raw data/*.csv
 processed/

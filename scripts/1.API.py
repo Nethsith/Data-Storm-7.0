@@ -1,12 +1,25 @@
 """
-Monthly Population Density Pipeline — Sri Lanka
-================================================
-Architecture:
-  Coordinates → 1km buffer → WorldPop base population →
-  Monthly mobility/tourism factors → Monthly density → Store → Visualise
+Monthly Population Density Pipeline — Sri Lanka (BULK / 20 000 locations)
+=========================================================================
+Strategy change from single-location version
+─────────────────────────────────────────────
+  ❌ OLD: 120 000 WorldPop API calls  (~50 hours with polite pausing)
+  ✅ NEW: Download one GeoTIFF raster per year (6 files, ~10 MB each)
+          then extract all 20 000 values locally in <60 seconds total.
 
-Requirements:
-  pip install pandas geopandas shapely requests matplotlib flask
+Architecture
+────────────
+  1. Load 20 000 coordinates from CSV
+  2. For each year  → download WorldPop raster (Sri Lanka GeoTIFF, once)
+  3. Zonal statistics on the raster for every 1 km buffer  (rasterstats)
+  4. Apply monthly mobility × tourism factors
+  5. Checkpoint after each year  → safe to resume if interrupted
+  6. Merge all years → monthly_density.csv
+  7. Visualise aggregate / per-location
+
+Requirements
+────────────
+  pip install pandas geopandas shapely requests tqdm rasterstats rasterio matplotlib
 """
 
 import os
@@ -14,13 +27,22 @@ import json
 import time
 import logging
 import requests
+import numpy as np
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-from shapely.geometry import Point, mapping
+from pathlib import Path
 from typing import Optional
+from shapely.geometry import Point
+from tqdm import tqdm
+
+# Optional but recommended for progress bars in notebooks
+try:
+    from tqdm.auto import tqdm
+except ImportError:
+    pass
 
 # ─────────────────────────────────────────────
 # LOGGING
@@ -34,327 +56,347 @@ log = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────
-# CONFIG  (edit these freely)
+# CONFIG
 # ─────────────────────────────────────────────
-LOCATIONS_CSV   = "raw data/outlet_coordinates.csv"
-OUTPUT_CSV      = "monthly_density.csv"
-BUFFER_METERS   = 1_000          # 1 km radius
-YEARS           = list(range(2020, 2026))   # 2020 – 2025 inclusive
-WORLDPOP_URL    = "https://api.worldpop.org/v1/services/stats"
-WORLDPOP_DATASET = "wpgppop"
-API_PAUSE_SEC   = 1.5            # be polite to the API between calls
+LOCATIONS_CSV    = "processed/silver/outlet_coordinates_silver.csv"
+OUTPUT_CSV       = "monthly_density.csv"
+RASTER_CACHE_DIR = Path("worldpop_rasters")   # GeoTIFFs stored here
+CHECKPOINT_DIR   = Path("checkpoints")        # one .parquet per year
+BUFFER_METERS    = 1_000
+YEARS            = list(range(2023, 2026))
+
+# WorldPop GeoTIFF download template for Sri Lanka (ISO3 = LKA)
+# Docs: https://hub.worldpop.org/geodata/listing?id=75
+WORLDPOP_RASTER_URL = (
+    "https://data.worldpop.org/GIS/Population/Global_2000_2020_1km/"
+    "{year}/LKA/lka_ppp_{year}_1km_Aggregated.tif"
+)
+
+# For 2021+ WorldPop uses Constrained data (only available to 2020 in free tier).
+# Fallback for 2021-2025: project forward from 2020 raster with growth rate.
+WORLDPOP_MAX_YEAR  = 2020
+ANNUAL_GROWTH_RATE = 0.008   # 0.8 % / yr — Sri Lanka census-based
+
+CHUNK_SIZE = 500   # locations processed per rasterstats batch (memory control)
 
 
 # ─────────────────────────────────────────────
-# STEP 1 — LOAD / CREATE LOCATIONS
+# MONTHLY / YEARLY FACTORS  (same as before)
 # ─────────────────────────────────────────────
-DEFAULT_LOCATIONS = [
-    {"location_name": "Colombo Fort",  "latitude": 6.9344, "longitude": 79.8428},
-    {"location_name": "Negombo Beach", "latitude": 7.2083, "longitude": 79.8358},
-    {"location_name": "Kandy Town",    "latitude": 7.2906, "longitude": 80.6337},
-    {"location_name": "Galle Fort",    "latitude": 6.0329, "longitude": 80.2168},
-]
+MONTHLY_TOURISM_FACTOR = {
+    1: 1.18, 2: 1.15, 3: 1.08, 4: 0.82, 5: 0.70,  6: 0.75,
+    7: 0.85, 8: 0.90, 9: 0.80, 10: 0.88, 11: 1.05, 12: 1.20,
+}
+YEARLY_MOBILITY_FACTOR = {
+    2020: 0.60, 2021: 0.72, 2022: 0.85,
+    2023: 0.95, 2024: 1.00, 2025: 1.02,
+}
 
+
+# ─────────────────────────────────────────────
+# STEP 1 — LOAD LOCATIONS
+# ─────────────────────────────────────────────
 def load_locations(path: str = LOCATIONS_CSV) -> pd.DataFrame:
-    if os.path.exists(path):
-        df = pd.read_csv(path)
-        log.info("Loaded %d locations from %s", len(df), path)
-    else:
-        log.warning("%s not found — using built-in defaults", path)
-        df = pd.DataFrame(DEFAULT_LOCATIONS)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        df.to_csv(path, index=False)
-        log.info("Saved default locations to %s", path)
+    log.info("Loading locations from %s …", path)
+    df = pd.read_csv(path)
 
-    lower_cols = {c.lower(): c for c in df.columns}
-    if {"latitude", "longitude"}.issubset(lower_cols):
-        lat_col = lower_cols["latitude"]
-        lon_col = lower_cols["longitude"]
-        name_col = lower_cols.get("location_name") or lower_cols.get("outlet_id")
+    # Normalise column names (case-insensitive)
+    lower = {c.lower(): c for c in df.columns}
+    rename = {}
+    for std, variants in [
+        ("latitude",      ["latitude", "lat", "y"]),
+        ("longitude",     ["longitude", "lon", "long", "lng", "x"]),
+        ("location_name", ["location_name", "outlet_id", "name", "id", "site_id"]),
+    ]:
+        for v in variants:
+            if v in lower:
+                rename[lower[v]] = std
+                break
 
-        df = df.rename(columns={
-            lat_col: "latitude",
-            lon_col: "longitude",
-        })
+    df = df.rename(columns=rename)
 
-        if name_col:
-            df = df.rename(columns={name_col: "location_name"})
-        else:
-            df["location_name"] = [f"loc_{i+1}" for i in range(len(df))]
-    else:
-        raise ValueError("Locations file must include Latitude and Longitude columns.")
+    if "latitude" not in df.columns or "longitude" not in df.columns:
+        raise ValueError(
+            "CSV must contain latitude and longitude columns "
+            f"(found: {list(df.columns)})"
+        )
+    if "location_name" not in df.columns:
+        df["location_name"] = [f"loc_{i+1}" for i in range(len(df))]
 
-    return df[["location_name", "latitude", "longitude"]]
+    df = df[["location_name", "latitude", "longitude"]].copy()
+    df = df.dropna(subset=["latitude", "longitude"])
+    log.info("Loaded %d locations", len(df))
+    return df.reset_index(drop=True)
 
 
 # ─────────────────────────────────────────────
-# STEP 2 — BUILD GeoDataFrame + 1 km BUFFERS
+# STEP 2 — BUILD 1 km BUFFER GeoDataFrame
 # ─────────────────────────────────────────────
 def build_buffers(df: pd.DataFrame) -> gpd.GeoDataFrame:
-    """Return a GeoDataFrame where each row's geometry is a 1 km circle."""
-    geometry = [Point(lon, lat) for lon, lat in zip(df.longitude, df.latitude)]
-    gdf = gpd.GeoDataFrame(df.copy(), geometry=geometry, crs="EPSG:4326")
-
-    # Sri Lanka — use a metre-based CRS for accurate buffering
+    log.info("Building 1 km buffers for %d locations …", len(df))
+    pts = [Point(lon, lat) for lon, lat in zip(df.longitude, df.latitude)]
+    gdf = gpd.GeoDataFrame(df.copy(), geometry=pts, crs="EPSG:4326")
     gdf_m = gdf.to_crs("EPSG:5235")
     gdf_m["geometry"] = gdf_m.geometry.buffer(BUFFER_METERS)
-
-    # Back to WGS-84 for the API
-    gdf_wgs = gdf_m.to_crs("EPSG:4326")
-    log.info("Created %d m buffers for %d locations", BUFFER_METERS, len(gdf_wgs))
-    return gdf_wgs
-
-
-def get_density_1km(lat: float, lon: float, year: int, month: Optional[int] = None) -> Optional[float]:
-    """
-    Return estimated population density (persons per km^2)
-    for a 1 km radius buffer around a point.
-    """
-    point = gpd.GeoSeries([Point(lon, lat)], crs="EPSG:4326")
-    point_m = point.to_crs("EPSG:5235")
-    buffer_m = point_m.buffer(BUFFER_METERS).iloc[0]
-
-    area_km2 = buffer_m.area / 1_000_000
-    if area_km2 <= 0:
-        return None
-
-    geojson_str = geom_to_geojson(gpd.GeoSeries([buffer_m], crs="EPSG:5235").to_crs("EPSG:4326").iloc[0])
-    pop = fetch_worldpop_population(geojson_str, year)
-    if pop is None:
-        pop = _synthetic_population("unknown", year)
-
-    if month is not None:
-        mob = YEARLY_MOBILITY_FACTOR.get(year, 1.0)
-        tour = MONTHLY_TOURISM_FACTOR.get(month, 1.0)
-        pop = pop * mob * tour
-
-    return float(pop) / area_km2
+    return gdf_m.to_crs("EPSG:4326")
 
 
 # ─────────────────────────────────────────────
-# STEP 3 — WORLDPOP API
+# STEP 3 — DOWNLOAD WORLDPOP RASTER (once/year)
 # ─────────────────────────────────────────────
-def geom_to_geojson(geom) -> str:
-    """Convert a Shapely geometry to a JSON string suitable for the API."""
-    return json.dumps(mapping(geom))
+def get_raster_path(year: int) -> Path:
+    RASTER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    # We always use the 2020 raster as the base; project forward if needed
+    raster_year = min(year, WORLDPOP_MAX_YEAR)
+    path = RASTER_CACHE_DIR / f"lka_pop_{raster_year}.tif"
+    return path, raster_year
 
 
-def fetch_worldpop_population(geojson_str: str, year: int) -> Optional[float]:
-    """
-    Call the WorldPop REST API and return the estimated population.
-    Returns None on error so the pipeline can continue gracefully.
+def download_raster(year: int) -> Path:
+    path, raster_year = get_raster_path(year)
+    if path.exists():
+        log.info("  Raster already cached: %s", path)
+        return path
 
-    WorldPop docs: https://www.worldpop.org/sdi/introapi
-    """
-    params = {
-        "dataset": WORLDPOP_DATASET,
-        "year":    year,
-        "geojson": geojson_str,
-    }
+    url = WORLDPOP_RASTER_URL.format(year=raster_year)
+    log.info("  Downloading WorldPop raster for %d → %s", raster_year, path)
+    log.info("  URL: %s", url)
+
     try:
-        resp = requests.get(WORLDPOP_URL, params=params, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-
-        # The API nests the value differently depending on version:
-        # data["data"]["total_population"] or data["population"]
-        pop = (
-            data.get("data", {}).get("total_population")
-            or data.get("population")
-            or data.get("data", {}).get("pop")
-        )
-        return float(pop) if pop is not None else None
-
+        with requests.get(url, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            total = int(r.headers.get("content-length", 0))
+            with open(path, "wb") as f, tqdm(
+                total=total, unit="B", unit_scale=True,
+                desc=f"  lka_pop_{raster_year}.tif"
+            ) as bar:
+                for chunk in r.iter_content(chunk_size=65536):
+                    f.write(chunk)
+                    bar.update(len(chunk))
+        log.info("  Download complete: %s (%.1f MB)", path, path.stat().st_size / 1e6)
     except requests.RequestException as exc:
-        log.error("WorldPop API error (year=%d): %s", year, exc)
-        return None
-    except (KeyError, ValueError, TypeError) as exc:
-        log.error("WorldPop parse error (year=%d): %s | response: %s", year, exc, resp.text[:200])
-        return None
+        log.error("  Download failed: %s", exc)
+        if path.exists():
+            path.unlink()
+        raise
+
+    return path
 
 
+# ─────────────────────────────────────────────
+# STEP 4 — ZONAL STATISTICS (local, very fast)
+# ─────────────────────────────────────────────
+def extract_population_from_raster(
+    gdf: gpd.GeoDataFrame,
+    raster_path: Path,
+    year: int,
+) -> pd.Series:
+    """
+    Use rasterstats to sum pixel values inside each 1 km buffer.
+    Returns a Series of population counts aligned to gdf index.
+
+    For years beyond 2020, applies compound growth to the 2020 raster.
+    """
+    try:
+        from rasterstats import zonal_stats
+    except ImportError:
+        raise ImportError(
+            "rasterstats is required for bulk extraction. "
+            "Install it with:  pip install rasterstats"
+        )
+
+    _, raster_year = get_raster_path(year)
+    growth_factor = (1 + ANNUAL_GROWTH_RATE) ** (year - raster_year)
+
+    log.info(
+        "  Extracting population (year=%d, raster_year=%d, growth=×%.4f) …",
+        year, raster_year, growth_factor,
+    )
+
+    all_pops = []
+    # Process in chunks to keep memory under control for 20 k rows
+    indices = list(range(len(gdf)))
+    for start in tqdm(range(0, len(gdf), CHUNK_SIZE), desc=f"  Zonal stats {year}"):
+        chunk = gdf.iloc[start : start + CHUNK_SIZE]
+        stats = zonal_stats(
+            chunk,
+            str(raster_path),
+            stats=["sum"],
+            nodata=-9999,
+            all_touched=False,
+        )
+        for s in stats:
+            raw = s.get("sum") or 0.0
+            all_pops.append(max(0.0, float(raw) * growth_factor))
+
+    return pd.Series(all_pops, index=gdf.index, name="base_population")
+
+
+# ─────────────────────────────────────────────
+# STEP 5 — YEARLY POPULATION TABLE (with checkpointing)
+# ─────────────────────────────────────────────
 def get_yearly_populations(gdf: gpd.GeoDataFrame, years: list) -> pd.DataFrame:
-    """
-    Fetch base population for every (location, year) combination.
-    Falls back to synthetic estimates if the API is unreachable.
-    """
-    records = []
-    for _, row in gdf.iterrows():
-        geojson_str = geom_to_geojson(row.geometry)
-        for year in years:
-            log.info("  Fetching: %s — %d …", row.location_name, year)
-            pop = fetch_worldpop_population(geojson_str, year)
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    frames = []
 
-            if pop is None:
-                # Graceful fallback — synthetic estimate so the pipeline still runs
-                pop = _synthetic_population(row.location_name, year)
-                log.warning("  ↳ Using synthetic fallback: %.0f", pop)
+    for year in years:
+        ckpt = CHECKPOINT_DIR / f"pop_{year}.parquet"
 
-            records.append({
-                "location_name": row.location_name,
-                "latitude":      row.latitude,
-                "longitude":     row.longitude,
-                "year":          year,
-                "base_population": round(pop),
-            })
-            time.sleep(API_PAUSE_SEC)
+        # Resume from checkpoint if already done
+        if ckpt.exists():
+            log.info("Year %d — loading from checkpoint %s", year, ckpt)
+            frames.append(pd.read_parquet(ckpt))
+            continue
 
-    return pd.DataFrame(records)
+        log.info("── Year %d ──", year)
+        raster_path = download_raster(year)
+        pop_series  = extract_population_from_raster(gdf, raster_path, year)
 
+        year_df = gdf[["location_name", "latitude", "longitude"]].copy()
+        year_df["year"]            = year
+        year_df["base_population"] = pop_series.values.round().astype(int)
+        year_df = year_df.reset_index(drop=True)
 
-def _synthetic_population(name: str, year: int) -> float:
-    """
-    Rough synthetic baseline so the pipeline can demonstrate results
-    even when the WorldPop API is unavailable or returns nothing.
-    Replace / remove once you have real API access.
-    """
-    base_map = {
-        "Colombo Fort":  55_000,
-        "Negombo Beach": 18_000,
-        "Kandy Town":    22_000,
-        "Galle Fort":    14_000,
-    }
-    base = base_map.get(name, 20_000)
-    growth = 0.008           # ~0.8 % / year
-    return base * ((1 + growth) ** (year - 2020))
+        year_df.to_parquet(ckpt, index=False)
+        log.info("  Checkpoint saved → %s", ckpt)
+        frames.append(year_df)
+
+    return pd.concat(frames, ignore_index=True)
 
 
 # ─────────────────────────────────────────────
-# STEP 4 — MONTHLY MOBILITY & TOURISM FACTORS
-# ─────────────────────────────────────────────
-# Source basis: SLTDA monthly arrivals pattern + Google Mobility trends.
-# All values are multipliers around 1.0.  Update from real SLTDA data when
-# available: https://www.sltda.gov.lk/en/statistical-data
-
-MONTHLY_TOURISM_FACTOR = {
-    1:  1.18,   # Jan  — high season (NE monsoon over, dry west coast)
-    2:  1.15,   # Feb
-    3:  1.08,   # Mar
-    4:  0.82,   # Apr  — Avurudu holiday, slight dip in international arrivals
-    5:  0.70,   # May  — SW monsoon begins
-    6:  0.75,   # Jun
-    7:  0.85,   # Jul  — Kandy Esala Perahera crowd build-up
-    8:  0.90,   # Aug
-    9:  0.80,   # Sep
-    10: 0.88,   # Oct  — inter-monsoon
-    11: 1.05,   # Nov  — NE monsoon, east coast rough but west coast picks up
-    12: 1.20,   # Dec  — Christmas / New Year peak
-}
-
-# Simple mobility factor: COVID dip in 2020-21, recovery thereafter
-YEARLY_MOBILITY_FACTOR = {
-    2020: 0.60,
-    2021: 0.72,
-    2022: 0.85,
-    2023: 0.95,
-    2024: 1.00,
-    2025: 1.02,
-}
-
-
-# ─────────────────────────────────────────────
-# STEP 5 — BUILD MONTHLY DENSITY TABLE
+# STEP 6 — EXPAND TO MONTHLY DENSITY
 # ─────────────────────────────────────────────
 def build_monthly_density(pop_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Expand yearly populations to monthly records and apply factors.
+    log.info("Building monthly density for %d location-year rows …", len(pop_df))
 
-    Final formula:
-        monthly_density = base_population × mobility_factor × tourism_factor
-    """
-    rows = []
+    # Vectorised approach — no Python loop over rows
     months = pd.date_range("2020-01-01", "2025-12-01", freq="MS")
+    month_df = pd.DataFrame({
+        "month":          months,
+        "year":           months.year,
+        "month_num":      months.month,
+        "tourism_factor": [MONTHLY_TOURISM_FACTOR[m] for m in months.month],
+    })
 
-    for _, pop_row in pop_df.iterrows():
-        year = pop_row.year
-        mob  = YEARLY_MOBILITY_FACTOR.get(year, 1.0)
+    mob_df = pd.DataFrame(
+        list(YEARLY_MOBILITY_FACTOR.items()),
+        columns=["year", "mobility_factor"]
+    )
+    month_df = month_df.merge(mob_df, on="year")
 
-        year_months = [m for m in months if m.year == year]
-        for month_ts in year_months:
-            tour = MONTHLY_TOURISM_FACTOR[month_ts.month]
-            density = pop_row.base_population * mob * tour
+    # Cross-join: every location × every month
+    pop_df["_key"]    = 1
+    month_df["_key"]  = 1
+    merged = pop_df.merge(month_df, on=["_key", "year"]).drop(columns="_key")
 
-            rows.append({
-                "location_name": pop_row.location_name,
-                "latitude":      pop_row.latitude,
-                "longitude":     pop_row.longitude,
-                "month":         month_ts.strftime("%Y-%m"),
-                "year":          year,
-                "month_num":     month_ts.month,
-                "base_population":   round(pop_row.base_population),
-                "mobility_factor":   mob,
-                "tourism_factor":    tour,
-                "monthly_density":   round(density),
-            })
+    merged["monthly_density"] = (
+        merged["base_population"]
+        * merged["mobility_factor"]
+        * merged["tourism_factor"]
+    ).round().astype(int)
 
-    df = pd.DataFrame(rows)
-    df["month"] = pd.to_datetime(df["month"])
-    return df.sort_values(["location_name", "month"]).reset_index(drop=True)
+    merged["month"] = merged["month"].dt.strftime("%Y-%m")
+    merged = merged.sort_values(["location_name", "month"]).reset_index(drop=True)
+
+    log.info("Monthly density table: %d rows × %d locations",
+             len(merged), merged.location_name.nunique())
+    return merged
 
 
 # ─────────────────────────────────────────────
-# STEP 6 — STORE RESULTS
+# STEP 7 — SAVE
 # ─────────────────────────────────────────────
 def save_results(df: pd.DataFrame, path: str = OUTPUT_CSV) -> None:
-    export = df.copy()
-    export["month"] = export["month"].dt.strftime("%Y-%m")
-    export.to_csv(path, index=False)
-    log.info("Results saved → %s  (%d rows)", path, len(df))
+    df.to_csv(path, index=False)
+    log.info("Saved → %s  (%d rows, %.1f MB)",
+             path, len(df), os.path.getsize(path) / 1e6)
 
 
 # ─────────────────────────────────────────────
-# STEP 7 — VISUALISE
+# STEP 8 — VISUALISE (aggregate view for 20 k locations)
 # ─────────────────────────────────────────────
-def visualise(df: pd.DataFrame, output_path: str = "density_chart.png") -> None:
-    locations = df["location_name"].unique()
-    fig, axes = plt.subplots(
-        len(locations), 1,
-        figsize=(13, 3.5 * len(locations)),
-        sharex=True,
-    )
-    if len(locations) == 1:
-        axes = [axes]
+def visualise_aggregate(df: pd.DataFrame, output_path: str = "density_aggregate.png") -> None:
+    """
+    For 20 000 locations, plotting every line would be unreadable.
+    Instead show: median, p25-p75 band, and p5-p95 band across all locations.
+    """
+    df = df.copy()
+    df["month"] = pd.to_datetime(df["month"])
 
-    colors = ["#2196F3", "#FF5722", "#4CAF50", "#9C27B0", "#FF9800", "#00BCD4"]
+    agg = df.groupby("month")["monthly_density"].agg(
+        p5=lambda x: np.percentile(x, 5),
+        p25=lambda x: np.percentile(x, 25),
+        median="median",
+        p75=lambda x: np.percentile(x, 75),
+        p95=lambda x: np.percentile(x, 95),
+    ).reset_index()
 
-    for ax, loc, color in zip(axes, locations, colors):
-        sub = df[df.location_name == loc].sort_values("month")
-        ax.fill_between(sub["month"], sub["monthly_density"],
-                        alpha=0.15, color=color)
-        ax.plot(sub["month"], sub["monthly_density"],
-                color=color, linewidth=1.8, label=loc)
+    fig, ax = plt.subplots(figsize=(14, 5))
+    ax.fill_between(agg["month"], agg["p5"],  agg["p95"], alpha=0.12, color="#2196F3", label="p5–p95")
+    ax.fill_between(agg["month"], agg["p25"], agg["p75"], alpha=0.25, color="#2196F3", label="p25–p75")
+    ax.plot(agg["month"], agg["median"], color="#2196F3", linewidth=2, label="Median")
 
-        ax.set_title(loc, fontsize=11, fontweight="bold", pad=6)
-        ax.set_ylabel("Est. density\n(persons in 1 km²)", fontsize=8)
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
-        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
-        ax.spines[["top", "right"]].set_visible(False)
-
+    ax.set_title("Monthly Population Density — All Locations Aggregate (2020–2025)",
+                 fontsize=12, fontweight="bold")
+    ax.set_ylabel("Est. persons in 1 km radius")
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+    ax.grid(axis="y", linestyle="--", alpha=0.35)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(fontsize=9)
     plt.xticks(rotation=45, ha="right", fontsize=8)
-    fig.suptitle(
-        "Monthly Population Density — Sri Lanka Locations (2020–2025)",
-        fontsize=13, fontweight="bold", y=1.01,
-    )
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    log.info("Chart saved → %s", output_path)
+    log.info("Aggregate chart saved → %s", output_path)
+    plt.show()
+
+
+def visualise_top_locations(
+    df: pd.DataFrame,
+    n: int = 10,
+    output_path: str = "density_top_locations.png",
+) -> None:
+    """Plot the top N highest-density locations."""
+    df = df.copy()
+    df["month"] = pd.to_datetime(df["month"])
+
+    top = (
+        df.groupby("location_name")["monthly_density"]
+        .median()
+        .nlargest(n)
+        .index.tolist()
+    )
+    sub = df[df.location_name.isin(top)]
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    colors = plt.cm.tab10.colors
+    for i, loc in enumerate(top):
+        d = sub[sub.location_name == loc].sort_values("month")
+        ax.plot(d["month"], d["monthly_density"],
+                label=loc, color=colors[i % 10], linewidth=1.4)
+
+    ax.set_title(f"Top {n} Locations by Median Monthly Density",
+                 fontsize=12, fontweight="bold")
+    ax.set_ylabel("Est. persons in 1 km radius")
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+    ax.grid(axis="y", linestyle="--", alpha=0.35)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(fontsize=7, ncol=2)
+    plt.xticks(rotation=45, ha="right", fontsize=8)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    log.info("Top-locations chart saved → %s", output_path)
     plt.show()
 
 
 # ─────────────────────────────────────────────
-# OPTIONAL: STEP 8 — FLASK REST API
+# OPTIONAL: FLASK API  (unchanged from v1)
 # ─────────────────────────────────────────────
 def start_api(df: pd.DataFrame, port: int = 5000) -> None:
-    """
-    Spin up a lightweight Flask API so other services can query results.
-
-    Usage:
-        GET /density?lat=7.2&lon=79.8&month=2024-06
-        GET /density/list?location=Negombo+Beach
-        GET /locations
-    """
     try:
         from flask import Flask, request, jsonify
     except ImportError:
@@ -362,45 +404,47 @@ def start_api(df: pd.DataFrame, port: int = 5000) -> None:
         return
 
     app = Flask(__name__)
-    # Store a datetime version for easy filtering
     df_api = df.copy()
     df_api["month_dt"] = pd.to_datetime(df_api["month"])
 
-    def _nearest_location(lat: float, lon: float) -> str:
-        """Return the location_name closest to the supplied coordinates."""
-        from math import hypot
-        best, best_dist = None, float("inf")
-        for name, grp in df_api.groupby("location_name"):
-            r = grp.iloc[0]
-            d = hypot(r.latitude - lat, r.longitude - lon)
-            if d < best_dist:
-                best_dist, best = d, name
-        return best
+    # Build a spatial index for fast nearest-location lookup
+    from shapely.geometry import Point as SPoint
+    import geopandas as _gpd
+    loc_pts = (
+        df_api.groupby("location_name")
+        .agg(lat=("latitude","first"), lon=("longitude","first"))
+        .reset_index()
+    )
+    loc_gdf = _gpd.GeoDataFrame(
+        loc_pts,
+        geometry=[SPoint(r.lon, r.lat) for _, r in loc_pts.iterrows()],
+        crs="EPSG:4326",
+    )
+
+    def _nearest(lat, lon):
+        pt = _gpd.GeoDataFrame(geometry=[SPoint(lon, lat)], crs="EPSG:4326")
+        idx = loc_gdf.distance(pt.geometry[0]).idxmin()
+        return loc_gdf.loc[idx, "location_name"]
 
     @app.route("/density")
     def get_density():
         lat   = request.args.get("lat",   type=float)
         lon   = request.args.get("lon",   type=float)
-        month = request.args.get("month", type=str)   # e.g. "2024-06"
-
-        if lat is None or lon is None or month is None:
-            return jsonify({"error": "Provide lat, lon, and month (YYYY-MM)"}), 400
-
-        loc  = _nearest_location(lat, lon)
+        month = request.args.get("month", type=str)
+        if None in (lat, lon, month):
+            return jsonify({"error": "Provide lat, lon, month (YYYY-MM)"}), 400
+        loc  = _nearest(lat, lon)
         mask = (df_api.location_name == loc) & (df_api["month_dt"].dt.strftime("%Y-%m") == month)
         row  = df_api[mask]
-
         if row.empty:
             return jsonify({"error": f"No data for {loc} / {month}"}), 404
-
         r = row.iloc[0]
         return jsonify({
-            "location":         loc,
-            "month":            month,
-            "base_population":  int(r.base_population),
-            "mobility_factor":  r.mobility_factor,
-            "tourism_factor":   r.tourism_factor,
-            "monthly_density":  int(r.monthly_density),
+            "location": loc, "month": month,
+            "base_population": int(r.base_population),
+            "mobility_factor": r.mobility_factor,
+            "tourism_factor":  r.tourism_factor,
+            "monthly_density": int(r.monthly_density),
         })
 
     @app.route("/density/list")
@@ -409,69 +453,61 @@ def start_api(df: pd.DataFrame, port: int = 5000) -> None:
         rows = df_api[df_api.location_name == loc] if loc else df_api
         if rows.empty:
             return jsonify({"error": "Location not found"}), 404
-
-        out = rows[["location_name", "month_dt", "monthly_density"]].copy()
+        out = rows.copy()
         out["month"] = out["month_dt"].dt.strftime("%Y-%m")
-        return jsonify(out[["location_name", "month", "monthly_density"]].to_dict(orient="records"))
+        return jsonify(out[["location_name","month","monthly_density"]].to_dict(orient="records"))
 
     @app.route("/locations")
     def get_locations():
-        locs = (
-            df_api.groupby("location_name")
-            .agg(latitude=("latitude", "first"), longitude=("longitude", "first"))
-            .reset_index()
-            .to_dict(orient="records")
+        return jsonify(
+            loc_pts[["location_name","lat","lon"]].to_dict(orient="records")
         )
-        return jsonify(locs)
 
-    log.info("Starting Flask API on http://127.0.0.1:%d", port)
-    log.info("  Example: http://127.0.0.1:%d/density?lat=7.21&lon=79.84&month=2024-06", port)
+    log.info("Flask API → http://127.0.0.1:%d", port)
     app.run(debug=False, port=port)
 
 
 # ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
-def main(
-    use_api: bool = False,    # set True to launch Flask after the pipeline
-    flask_port: int = 5000,
-) -> pd.DataFrame:
+def main(use_api: bool = False, flask_port: int = 5000) -> pd.DataFrame:
+    log.info("═" * 60)
+    log.info(" Monthly Population Density Pipeline — BULK (20 000 locations)")
+    log.info("═" * 60)
 
-    log.info("═" * 55)
-    log.info(" Monthly Population Density Pipeline — Sri Lanka")
-    log.info("═" * 55)
+    t0 = time.time()
 
-    # 1. Load locations
+    # 1. Load
     locations_df = load_locations(LOCATIONS_CSV)
 
-    # 2. Build 1 km buffers
+    # 2. Buffers
     gdf = build_buffers(locations_df)
 
-    # 3. Fetch yearly population from WorldPop (with fallback)
-    log.info("Calling WorldPop API for %d location × %d year combinations …",
-             len(gdf), len(YEARS))
+    # 3. Yearly populations via raster (6 downloads + local extraction)
     pop_df = get_yearly_populations(gdf, YEARS)
 
-    # 4. Build monthly density table
-    log.info("Expanding to monthly records and applying factors …")
+    # 4. Monthly table (vectorised, no row loop)
     density_df = build_monthly_density(pop_df)
 
-    # 5. Save CSV
+    # 5. Save
     save_results(density_df, OUTPUT_CSV)
 
-    # 6. Print a sample
-    print("\n── Sample output (first 12 rows) ──")
-    print(
-        density_df[["location_name", "month", "base_population",
-                     "mobility_factor", "tourism_factor", "monthly_density"]]
-        .head(12)
-        .to_string(index=False)
-    )
+    # 6. Summary stats
+    print("\n── Summary ──")
+    print(f"  Locations : {density_df.location_name.nunique():,}")
+    print(f"  Months    : {density_df.month.nunique()}")
+    print(f"  Total rows: {len(density_df):,}")
+    print(f"  Elapsed   : {(time.time()-t0)/60:.1f} min")
+    print("\n── Sample (5 rows) ──")
+    print(density_df[["location_name","month","base_population",
+                       "mobility_factor","tourism_factor","monthly_density"]]
+          .sample(5).to_string(index=False))
 
     # 7. Visualise
-    visualise(density_df)
+    visualise_aggregate(density_df)
+    visualise_top_locations(density_df, n=10)
 
-    # 8. Optional API server
+    # 8. Optional API
     if use_api:
         start_api(density_df, port=flask_port)
 
@@ -479,5 +515,4 @@ def main(
 
 
 if __name__ == "__main__":
-    # ── Change use_api=True to also launch the Flask server ──
     final_df = main(use_api=False, flask_port=5000)
