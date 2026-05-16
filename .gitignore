@@ -1,0 +1,11 @@
+# Data files and large artifacts
+*.csv
+!raw data/
+!raw data/*.csv
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
