@@ -11,3 +11,9 @@ summaries/
 # OS/editor files
 .DS_Store
 Thumbs.db
+
+# Python cache files
+__pycache__/
+*.pyc
+.vscode/
+.venv/
