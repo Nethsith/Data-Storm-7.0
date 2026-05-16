@@ -3,8 +3,8 @@
 !monthly_density.csv
 !raw data/
 !raw data/*.csv
-processed/
-summaries/
+
+
 plots/
 # Notebook checkpoints
 .ipynb_checkpoints/

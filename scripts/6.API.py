@@ -69,8 +69,8 @@ log = logging.getLogger(__name__)
 # CONFIG  — edit these freely
 # ─────────────────────────────────────────────
 LOCATIONS_CSV    = "processed/silver/outlet_coordinates_silver.csv"
-OUTPUT_CSV       = "monthly_density.csv"
-ZERO_REPORT_CSV  = "zero_population_report.csv"   # audit file for fixed zeros
+OUTPUT_CSV       = "processed/silver/monthly_density.csv"
+ZERO_REPORT_CSV  = "processed/silver/zero_population_report.csv"   # audit file for fixed zeros
 RASTER_CACHE_DIR = Path("worldpop_rasters")
 CHECKPOINT_DIR   = Path("checkpoints")
 PROVINCE_DIR     = Path("provinces")
@@ -463,15 +463,15 @@ def save_results(df: pd.DataFrame, path: str = OUTPUT_CSV) -> None:
     log.info("Saved → %s  (%d rows, %.1f MB)", path, len(df), os.path.getsize(path) / 1e6)
 
 
-def save_zero_report(df: pd.DataFrame, path: str = ZERO_REPORT_CSV) -> None:
-    """Audit CSV for base population values."""
-    report = (
-        df.drop_duplicates("location_name")
-        [["location_name", "latitude", "longitude", "province", "base_population"]]
-        .reset_index(drop=True)
-    )
-    report.to_csv(path, index=False)
-    log.info("Base population report → %s  (%d locations)", path, len(report))
+# def save_zero_report(df: pd.DataFrame, path: str = ZERO_REPORT_CSV) -> None:
+#     """Audit CSV for base population values."""
+#     report = (
+#         df.drop_duplicates("location_name")
+#         [["location_name", "latitude", "longitude", "province", "base_population"]]
+#         .reset_index(drop=True)
+#     )
+#     report.to_csv(path, index=False)
+#     log.info("Base population report → %s  (%d locations)", path, len(report))
 
 
 # ─────────────────────────────────────────────
