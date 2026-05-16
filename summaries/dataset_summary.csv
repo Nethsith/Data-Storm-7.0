@@ -1,0 +1,6 @@
+file,rows,cols,size_mb
+raw data\distributor_seasonality_details.csv,360,4,0.01
+raw data\holiday_list.csv,349,3,0.02
+raw data\outlet_coordinates.csv,20000,3,0.55
+raw data\outlet_master.csv,20000,4,0.48
+raw data\transactions_history_final.csv,2376389,7,161.32
