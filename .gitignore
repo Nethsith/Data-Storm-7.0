@@ -2,6 +2,8 @@
 *.csv
 !raw data/
 !raw data/*.csv
+processed/
+summaries/
 
 # Notebook checkpoints
 .ipynb_checkpoints/
