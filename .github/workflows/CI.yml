@@ -1,0 +1,57 @@
+name: CI - Data-Storm Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pipeline scripts Read Data
+        run: |
+          python -u scripts/1.read_data.py
+          
+      - name: Run pipeline scripts Missing Value Imputation
+        run: |
+          python -u scripts/2.miss_val.py
+          
+      - name: Run pipeline scripts Silver Data
+        run: |
+          python -u scripts/3.silver_data.py
+          
+      - name: Run pipeline scripts Outlet Size Imputation
+        run: |
+          python -u scripts/5.outlet_size_imputation.py
+          
+      - name: Run pipeline scripts Holiday
+        run: |
+          python -u scripts/6.holiday.py
+          
+      - name: Run pipeline scripts API
+        run: |
+          python -u scripts/6.API.py
+          
+      - name: Run pipeline scripts Gold Data
+        run: |
+          python -u scripts/7.gold_data.py
+          
+      - name: Run pipeline scripts Model
+        run: |
+          python -u scripts/9.model.py

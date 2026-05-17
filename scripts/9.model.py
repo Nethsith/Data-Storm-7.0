@@ -10,6 +10,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import silhouette_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, RobustScaler
+from joblib import dump
 
 warnings.filterwarnings("ignore")
 
@@ -30,7 +31,7 @@ SUBMISSION_DIR.mkdir(parents=True, exist_ok=True)
 # CONFIG
 # ============================================================
 
-TEAM_NAME = "teamname"  # change this to your real team name
+TEAM_NAME = "Syntax Sifters"  # change this to your real team name
 
 RANDOM_STATE = 42
 
@@ -330,7 +331,7 @@ def run_clustering(outlets: pd.DataFrame, numeric_features: list[str], categoric
     print("\nCluster distribution:")
     print(outlets["cluster_id"].value_counts().sort_index())
 
-    return outlets, best_k
+    return outlets, best_k, final_model, preprocessor
 
 
 # ============================================================
@@ -846,7 +847,12 @@ def calculate_january_2026_potential(outlets: pd.DataFrame, cluster_benchmarks: 
 # SAVE OUTPUTS
 # ============================================================
 
-def save_prediction_outputs(potential: pd.DataFrame, best_k: int):
+def save_prediction_outputs(
+    potential: pd.DataFrame,
+    best_k: int,
+    model=None,
+    preprocessor=None,
+):
     potential_cols = [
         "Outlet_ID",
         "cluster_id",
@@ -881,11 +887,17 @@ def save_prediction_outputs(potential: pd.DataFrame, best_k: int):
 
     submission = potential[["Outlet_ID", "Maximum_Monthly_Liters"]].copy()
 
-    submission_path = SUBMISSION_DIR / f"{TEAM_NAME}_predictions.csv"
+    submission_path = SUBMISSION_DIR / f"{TEAM_NAME.replace(' ', '_')}_predictions.csv"
     submission.to_csv(submission_path, index=False)
 
-    # Generic copy
-    submission.to_csv(GOLD_DIR / "teamname_predictions.csv", index=False)
+
+    if model is not None:
+        model_path = SUBMISSION_DIR / f"{TEAM_NAME.replace(' ', '_')}_kmeans_model.joblib"
+        dump(model, model_path)
+
+    if preprocessor is not None:
+        preprocessor_path = SUBMISSION_DIR / f"{TEAM_NAME.replace(' ', '_')}_preprocessor.joblib"
+        dump(preprocessor, preprocessor_path)
 
     potential_summary = {
         "total_outlets": len(potential),
@@ -947,7 +959,7 @@ def run_prediction_pipeline():
 
     numeric_features, categorical_features = get_clustering_features(outlets)
 
-    clustered_outlets, best_k = run_clustering(
+    clustered_outlets, best_k, model, preprocessor = run_clustering(
         outlets=outlets,
         numeric_features=numeric_features,
         categorical_features=categorical_features
@@ -967,7 +979,9 @@ def run_prediction_pipeline():
 
     save_prediction_outputs(
         potential=potential,
-        best_k=best_k
+        best_k=best_k,
+        model=model,
+        preprocessor=preprocessor,
     )
 
 
