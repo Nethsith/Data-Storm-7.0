@@ -12,7 +12,7 @@ The challenge objective is to estimate the **Maximum Monthly Purchase Potential*
 In this problem, outlet potential is not directly available as a target variable. Historical sales only show what an outlet actually sold, not what it could have sold under ideal conditions. Therefore, our solution treats outlet potential as a **latent ceiling** and estimates it through a combination of:
 
 - Data engineering and data-forensics checks
-- Bronze → Silver → Gold pipeline architecture
+- Bronze -> Silver -> Gold pipeline architecture
 - Transaction anomaly classification
 - Missing value handling
 - Holiday and seasonality feature engineering
@@ -24,7 +24,7 @@ In this problem, outlet potential is not directly available as a target variable
 The final official output file is:
 
 ```text
-submissions/Syntax_Sifters_predictions.csv
+submissions/teamname_predictions.csv
 ```
 
 with the required columns:
@@ -49,7 +49,7 @@ This will execute all scripts in the required order and generate the final predi
 Final output:
 
 ```text
-submissions/Syntax_Sifters_predictions.csv
+submissions/teamname_predictions.csv
 ```
 
 ---
@@ -73,6 +73,8 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
+### 3.3 Dependencies
+
 Current `requirements.txt` includes:
 
 ```text
@@ -95,7 +97,9 @@ kagglehub
 Notes:
 - Installing geospatial packages (`rasterio`, `fiona`, `rasterstats`, `geopandas`) on Windows may require wheels or conda; if you encounter build errors, consider using a conda environment.
 
-## Required input files
+---
+
+## 4. Required Input Files
 
 Place the competition datasets inside the `raw data/` folder.
 
@@ -115,29 +119,45 @@ raw data/distributor_seasonality_details.csv
 raw data/holiday_list.csv
 ```
 
-## Repository layout (top-level)
+---
 
+## 5. Repository Layout (Top-Level)
+
+```text
 Data-Storm-7.0/
-│
 ├── README.md
 ├── requirements.txt
-│
-│
+├── main.py
+├── checkpoints/
+├── geonames/
+├── notebook/
+├── plots/
+├── processed/
+├── provinces/
+├── raw data/
 ├── scripts/
-│   ├── 0.getting_raw_data.py
-│   ├── main.py
-│   ├── 1.read_data.py
-│   ├── 2.miss_val.py
-│   ├── 3.silver_data.py
-│   ├── 4.plot_seasonality.py
-│   ├── 5.outlet_size_imputation.py
-│   ├── 6.API.py
-│   ├── 6.holiday.py
-│   ├── 7.gold_data.py
-│   └── 9.model.py
-│
-└── notebook/
-    └── data_process.ipynb
+├── submissions/
+├── summaries/
+└── worldpop_rasters/
+```
+
+### 5.1 scripts/
+
+```text
+scripts/
+├── 0.getting_raw_data.py
+├── 1.read_data.py
+├── 2.miss_val.py
+├── 3.silver_data.py
+├── 4.plot_seasonality.py
+├── 5.outlet_size_imputation.py
+├── 6.API.py
+├── 7.holiday.py
+├── 8.gold_data.py
+├── 9.model.py
+├── submissions/
+└── summaries/
+```
 
 Note: If the final prediction script name changes, update the script name inside `main.py` accordingly.
 
@@ -159,9 +179,9 @@ It runs the following scripts in order:
 2. scripts/2.miss_val.py
 3. scripts/3.silver_data.py
 4. scripts/5.outlet_size_imputation.py
-5. scripts/6.holiday.py
+5. scripts/7.holiday.py
 6. scripts/6.API.py
-7. scripts/7.gold_data.py
+7. scripts/8.gold_data.py
 8. scripts/9.model.py
 ```
 
@@ -172,9 +192,9 @@ python scripts/1.read_data.py
 python scripts/2.miss_val.py
 python scripts/3.silver_data.py
 python scripts/5.outlet_size_imputation.py
-python scripts/6.holiday.py
+python scripts/7.holiday.py
 python scripts/6.API.py
-python scripts/7.gold_data.py
+python scripts/8.gold_data.py
 python scripts/9.model.py
 ```
 
@@ -187,8 +207,6 @@ python scripts/4.plot_seasonality.py
 ---
 
 ## 7. End-to-End Workflow
-
-The project follows a **Bronze → Silver → Gold → Prediction** pipeline.
 
 ```text
 Raw Data
@@ -214,7 +232,7 @@ Final Prediction CSV
 
 ## 8. Layer Explanation
 
-## 8.1 Bronze Layer
+### 8.1 Bronze Layer
 
 The Bronze layer preserves raw files as received.
 
@@ -232,7 +250,7 @@ processed/bronze/
 
 ---
 
-## 8.2 Silver Layer
+### 8.2 Silver Layer
 
 The Silver layer applies data cleaning, anomaly detection, and data-forensics checks.
 
@@ -268,14 +286,14 @@ processed/anomalies/
 
 ---
 
-## 8.3 Gold Layer
+### 8.3 Gold Layer
 
 The Gold layer integrates all cleaned and engineered datasets into model-ready files.
 
 Main script:
 
 ```text
-scripts/7.gold_data.py
+scripts/8.gold_data.py
 ```
 
 Gold does not clean raw data again. It reads already prepared Silver outputs and combines them into final modelling tables.
@@ -299,7 +317,7 @@ processed/gold/outlet_modeling_table_gold.csv
 
 ## 9. Script-by-Script Explanation
 
-## 9.1 `scripts/1.read_data.py`
+### 9.1 `scripts/1.read_data.py`
 
 Purpose:
 
@@ -317,7 +335,7 @@ summaries/column_summary.csv
 
 ---
 
-## 9.2 `scripts/2.miss_val.py`
+### 9.2 `scripts/2.miss_val.py`
 
 Purpose:
 
@@ -333,7 +351,7 @@ summaries/
 
 ---
 
-## 9.3 `scripts/3.silver_data.py`
+### 9.3 `scripts/3.silver_data.py`
 
 Purpose:
 
@@ -341,7 +359,7 @@ Creates the cleaned Silver layer.
 
 Main cleaning and data-forensics work:
 
-### Outlet master
+#### Outlet master
 
 - Cleans outlet categories
 - Standardizes `Outlet_Size`
@@ -349,13 +367,13 @@ Main cleaning and data-forensics work:
 - Handles missing or invalid values
 - Checks duplicate `Outlet_ID`
 
-### Outlet coordinates
+#### Outlet coordinates
 
 - Validates latitude and longitude ranges
 - Corrects swapped latitude/longitude values when recoverable
 - Rejects invalid coordinates that cannot be corrected
 
-### Transactions
+#### Transactions
 
 Transactions are classified into:
 
@@ -373,7 +391,7 @@ Rejected records:
 invalid sign mismatch or invalid required fields
 ```
 
-### SKU price validation
+#### SKU price validation
 
 The pipeline uses SKU-level price benchmarks instead of a single global price threshold because different SKUs have different normal price-per-liter ranges.
 
@@ -390,7 +408,7 @@ summaries/silver_quality_summary.csv
 
 ---
 
-## 9.4 `scripts/5.outlet_size_imputation.py`
+### 9.4 `scripts/5.outlet_size_imputation.py`
 
 Purpose:
 
@@ -422,7 +440,7 @@ The Gold pipeline does not train this model again. It only reads the already-imp
 
 ---
 
-## 9.5 `scripts/6.holiday.py`
+### 9.5 `scripts/7.holiday.py`
 
 Purpose:
 
@@ -476,7 +494,7 @@ distributor_month_demand_context_score
 
 ---
 
-## 9.6 `scripts/6.API.py`
+### 9.6 `scripts/6.API.py`
 
 Purpose:
 
@@ -510,7 +528,7 @@ These features are integrated into the Gold layer.
 
 ---
 
-## 9.7 `scripts/7.gold_data.py`
+### 9.7 `scripts/8.gold_data.py`
 
 Purpose:
 
@@ -594,7 +612,7 @@ summaries/gold_missing_value_report.csv
 
 ---
 
-## 9.8 `scripts/8.model.py`
+### 9.8 `scripts/9.model.py`
 
 Purpose:
 
@@ -643,11 +661,11 @@ Potential formula concept:
 January 2026 Potential
 =
 Cluster January Ceiling
-× Seasonality Adjustment
-× Holiday Context Adjustment
-× Density Adjustment
-× Recent Trend Adjustment
-× Capacity Adjustment
+x Seasonality Adjustment
+x Holiday Context Adjustment
+x Density Adjustment
+x Recent Trend Adjustment
+x Capacity Adjustment
 ```
 
 Safety rules:
@@ -668,22 +686,9 @@ Final Potential <= cluster January upper cap
 
 Rotaract Club of IESL, Sri Lanka
 
-Main outputs:
-
-```text
-processed/gold/outlet_clusters_gold.csv
-processed/gold/monthly_sales_with_clusters_gold.csv
-processed/gold/outlet_january_2026_potential_gold.csv
-summaries/clustering_k_selection.csv
-summaries/cluster_profiles.csv
-summaries/cluster_potential_benchmarks.csv
-summaries/potential_summary.csv
-submissions/teamname_predictions.csv
-```
-
 ---
 
-## 10. Potential Calculation Logic
+## 11. Potential Calculation Logic
 
 The final model estimates potential using peer comparison.
 
@@ -723,13 +728,13 @@ Final Potential >= outlet's own historical January peak
 Final Potential <= cluster January upper cap
 ```
 
-This makes sure that the model does not predict below an outlet’s proven clean January performance and does not overestimate beyond realistic cluster top-performer levels.
+This makes sure that the model does not predict below an outlet's proven clean January performance and does not overestimate beyond realistic cluster top-performer levels.
 
 ---
 
-## 11. Output Files
+## 12. Output Files
 
-## 11.1 Final Submission
+### 12.1 Final Submission
 
 ```text
 submissions/teamname_predictions.csv
@@ -742,7 +747,7 @@ Outlet_ID
 Maximum_Monthly_Liters
 ```
 
-## 11.2 Gold Outputs
+### 12.2 Gold Outputs
 
 ```text
 processed/gold/monthly_sales_gold.csv
@@ -750,7 +755,7 @@ processed/gold/outlet_modeling_table_gold.csv
 processed/gold/outlet_january_2026_potential_gold.csv
 ```
 
-## 11.3 Summary / Diagnostic Outputs
+### 12.3 Summary / Diagnostic Outputs
 
 ```text
 summaries/main_pipeline_run_log.csv
@@ -766,12 +771,12 @@ summaries/potential_summary.csv
 
 ---
 
-## 12. Validation Checklist
+## 13. Validation Checklist
 
 After running:
 
 ```bash
-python scripts/main.py
+python main.py
 ```
 
 check:
@@ -796,57 +801,31 @@ potential output exists
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
-### 13.1 `scripts/scripts/1.read_data.py` not found
+### 14.1 `scripts/1.read_data.py` not found
 
-This happens when `main.py` calculates the project root incorrectly.
-
-If `main.py` is inside the `scripts/` folder, the root should be one level above `scripts`.
-
-Correct root logic:
-
-```python
-CURRENT_FILE = Path(__file__).resolve()
-
-if CURRENT_FILE.parent.name == "scripts":
-    ROOT = CURRENT_FILE.parents[1]
-else:
-    ROOT = CURRENT_FILE.parent
-
-SCRIPTS_DIR = ROOT / "scripts"
-```
-
-Run from project root:
+If `main.py` reports missing scripts, verify exact filenames in `scripts/` and run from repository root:
 
 ```bash
-python scripts/main.py
+python main.py
 ```
 
----
-
-### 13.2 Missing `monthly_density.csv`
+### 14.2 Missing `monthly_density.csv`
 
 Run:
 
 ```bash
 python scripts/6.API.py
+python scripts/8.gold_data.py
 ```
 
-Then run:
-
-```bash
-python scripts/7.gold_data.py
-```
-
----
-
-### 13.3 Missing Gold modeling table
+### 14.3 Missing Gold modeling table
 
 Run:
 
 ```bash
-python scripts/7.gold_data.py
+python scripts/8.gold_data.py
 ```
 
 Expected output:
@@ -855,14 +834,12 @@ Expected output:
 processed/gold/outlet_modeling_table_gold.csv
 ```
 
----
-
-### 13.4 Missing final prediction file
+### 14.4 Missing final prediction file
 
 Run:
 
 ```bash
-python scripts/8.model.py
+python scripts/9.model.py
 ```
 
 Expected output:
@@ -873,35 +850,14 @@ submissions/teamname_predictions.csv
 
 ---
 
-### 13.5 Kaggle row_id error
-
-Kaggle may expect a different format such as:
-
-```text
-row_id
-```
-
-or fewer rows.
-
-However, the official competition output for this project is:
-
-```text
-Outlet_ID
-Maximum_Monthly_Liters
-```
-
-Therefore, the official final file should not be converted into Kaggle `row_id` format unless specifically required by the organizers.
-
----
-
-## 14. GenAI Usage
+## 15. GenAI Usage
 
 Generative AI tools were used as engineering accelerators during the project.
 
 AI support was used for:
 
 - brainstorming the latent potential framework
-- designing the Bronze → Silver → Gold pipeline
+- designing the Bronze -> Silver -> Gold pipeline
 - identifying possible data-forensics checks
 - improving holiday overcounting logic
 - structuring clustering and peer benchmarking logic
@@ -921,12 +877,12 @@ The final pipeline was reviewed and validated by the team. AI-generated suggesti
 
 ---
 
-## 15. Notes for Evaluators
+## 16. Notes for Evaluators
 
 The complete end-to-end run command is:
 
 ```bash
-python scripts/main.py
+python main.py
 ```
 
 Final prediction file:
@@ -948,32 +904,3 @@ processed/gold/outlet_january_2026_potential_gold.csv
 ```
 
 The project is structured to show the full process from raw data inspection to data cleaning, Gold feature integration, clustering, and final January 2026 outlet potential estimation.
-
-
-## 16. Contributors
-
-<table>
-  <tr>
-    <td align="center">
-      <b>Thilokya Angeesa</b><br/>
-      <a href="https://github.com/Thilokya">@Thilokya</a>
-    </td>
-    <td align="center">
-      <b>Nethsith Gunaweerda</b><br/>
-      <a href="https://github.com/Nethsith">@Nethsith</a>
-    </td>
-  </tr>
-</table>
-
-> **Team Syntax Sifters** — Data Storm v7.0
-
----
-
-## 17. License
-
-This project is licensed under the **MIT License**.
-See the [LICENSE](LICENSE) file for full details.
-
-```text
-Copyright (c) 2026 Thilokya Angeesa & Nethsith Gunaweerda (Team Syntax Sifters)
-```
