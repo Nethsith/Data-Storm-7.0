@@ -1,5 +1,8 @@
 # Data Storm v7.0 - Latent Outlet Potential Estimation
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/Nethsith/Data-Storm-7.0/actions/workflows/CI.yml/badge.svg)](https://github.com/Nethsith/Data-Storm-7.0/actions/workflows/CI.yml)
+
 ## 1. Project Overview
 
 This repository contains our solution for **Data Storm v7.0 - Preliminary Round**.
@@ -948,3 +951,29 @@ The project is structured to show the full process from raw data inspection to d
 
 
 ## 16. Contributors
+
+<table>
+  <tr>
+    <td align="center">
+      <b>Thilokya Angeesa</b><br/>
+      <a href="https://github.com/Thilokya">@Thilokya</a>
+    </td>
+    <td align="center">
+      <b>Nethsith Gunaweerda</b><br/>
+      <a href="https://github.com/Nethsith">@Nethsith</a>
+    </td>
+  </tr>
+</table>
+
+> **Team Syntax Sifters** — Data Storm v7.0
+
+---
+
+## 17. License
+
+This project is licensed under the **MIT License**.
+See the [LICENSE](LICENSE) file for full details.
+
+```text
+Copyright (c) 2026 Thilokya Angeesa & Nethsith Gunaweerda (Team Syntax Sifters)
+```
