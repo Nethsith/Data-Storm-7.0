@@ -18,22 +18,72 @@ jobs:
         with:
           python-version: "3.11"
 
+      # ── Cache 1: pip packages ──────────────────────────────────────────
+      # Exact same key as CI. GitHub caches from the default branch (main)
+      # are readable by tag runs, so this is almost always a full hit —
+      # dependency install goes from ~3 min → ~15 s.
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-py3.11-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-py3.11-
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # ── Cache 2: WorldPop rasters ──────────────────────────────────────
+      # Same static key as CI; tag runs can read main-branch caches,
+      # so the ~60 MB of GeoTIFFs are never re-downloaded.
+      - name: Cache WorldPop rasters
+        uses: actions/cache@v4
+        with:
+          path: worldpop_rasters/
+          key: worldpop-rasters-v1
+          restore-keys: |
+            worldpop-rasters-
+
+      # ── Download CI artifacts ──────────────────────────────────────────
+      # The tag points to the same commit SHA that CI already ran on main.
+      # This downloads the fully-processed `processed/` and `checkpoints/`
+      # directories, so main.py skips all the expensive computation.
+      - name: Download pipeline artifacts from CI
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true          # graceful fallback if CI artifact expired
+        with:
+          workflow: CI.yml
+          commit: ${{ github.sha }}
+          name: pipeline-data-${{ github.sha }}
+          path: .
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Cache 3: checkpoint fallback ───────────────────────────────────
+      # If the CI artifact has expired (>7 days) or wasn't found,
+      # restore checkpoints from the Actions cache as a safety net.
+      - name: Restore API checkpoints from cache (fallback)
+        uses: actions/cache@v4
+        with:
+          path: checkpoints/
+          key: api-checkpoints-${{ hashFiles('scripts/6.API.py') }}
+          restore-keys: |
+            api-checkpoints-
+
+      # ── Download raw data (needed by main.py for any uncached steps) ───
       - name: Download Kaggle raw data
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-        run: |
-          python -u scripts/0.getting_raw_data.py
+        run: python -u scripts/0.getting_raw_data.py
 
-      - name: Run pipeline scripts main.py
-        run: |
-          python -u main.py
+      # With processed/ and checkpoints/ already present, main.py skips
+      # the heavy pipeline steps and goes straight to model + submissions.
+      - name: Run pipeline main.py
+        run: python -u main.py
 
+      # ── Package and release ────────────────────────────────────────────
       - name: Package submissions
         run: |
           if [ ! -d submissions ]; then

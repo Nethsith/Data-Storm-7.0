@@ -21,7 +21,7 @@ In this problem, outlet potential is not directly available as a target variable
 The final official output file is:
 
 ```text
-submissions/teamname_predictions.csv
+submissions/Syntax_Sifters_predictions.csv
 ```
 
 with the required columns:
@@ -38,7 +38,7 @@ Maximum_Monthly_Liters
 Run the full pipeline from the project root:
 
 ```bash
-python scripts/main.py
+python main.py
 ```
 
 This will execute all scripts in the required order and generate the final prediction file.
@@ -46,7 +46,7 @@ This will execute all scripts in the required order and generate the final predi
 Final output:
 
 ```text
-submissions/teamname_predictions.csv
+submissions/Syntax_Sifters_predictions.csv
 ```
 
 ---
@@ -121,6 +121,12 @@ flask
 
 Place the competition datasets inside the `raw data/` folder.
 
+You can download them with:
+
+```bash
+python scripts/0.getting_raw_data.py
+```
+
 Expected files:
 
 ```text
@@ -137,20 +143,14 @@ The pipeline expects this folder structure before running.
 
 ## 5. Repository Structure
 
-```text
 Data-Storm-7.0/
 │
 ├── README.md
 ├── requirements.txt
 │
-├── raw data/
-│   ├── transactions_history_final.csv
-│   ├── outlet_master.csv
-│   ├── outlet_coordinates.csv
-│   ├── distributor_seasonality_details.csv
-│   └── holiday_list.csv
 │
 ├── scripts/
+│   ├── 0.getting_raw_data.py
 │   ├── main.py
 │   ├── 1.read_data.py
 │   ├── 2.miss_val.py
@@ -160,27 +160,12 @@ Data-Storm-7.0/
 │   ├── 6.API.py
 │   ├── 6.holiday.py
 │   ├── 7.gold_data.py
-│   └── 8.model.py
+│   └── 9.model.py
 │
-├── notebook/
-│   └── data_process.ipynb
-│
-├── processed/
-│   ├── bronze/
-│   ├── silver/
-│   ├── gold/
-│   ├── rejected/
-│   └── anomalies/
-│
-├── summaries/
-├── submissions/
-├── worldpop_rasters/
-├── provinces/
-├── geonames/
-└── checkpoints/
-```
+└── notebook/
+    └── data_process.ipynb
 
-Note: If the final prediction script is named `8.prediction.py` instead of `8.model.py`, update the script name inside `scripts/main.py` accordingly.
+Note: If the final prediction script name changes, update the script name inside `main.py` accordingly.
 
 ---
 
@@ -189,12 +174,13 @@ Note: If the final prediction script is named `8.prediction.py` instead of `8.mo
 The full pipeline is controlled by:
 
 ```text
-scripts/main.py
+main.py
 ```
 
 It runs the following scripts in order:
 
 ```text
+0. scripts/0.getting_raw_data.py
 1. scripts/1.read_data.py
 2. scripts/2.miss_val.py
 3. scripts/3.silver_data.py
@@ -202,7 +188,7 @@ It runs the following scripts in order:
 5. scripts/6.holiday.py
 6. scripts/6.API.py
 7. scripts/7.gold_data.py
-8. scripts/8.model.py
+8. scripts/9.model.py
 ```
 
 Manual run order:
@@ -215,7 +201,7 @@ python scripts/5.outlet_size_imputation.py
 python scripts/6.holiday.py
 python scripts/6.API.py
 python scripts/7.gold_data.py
-python scripts/8.model.py
+python scripts/9.model.py
 ```
 
 Optional EDA visualization:
@@ -697,6 +683,17 @@ Final Potential >= outlet's own historical January peak
 Final Potential <= cluster January upper cap
 ```
 
+---
+
+## 10. Contributors
+
+### Team: Syntax Sifters
+
+- **Nethsith Gunaweena**
+- **Thilokya Angeesa**
+
+Rotaract Club of IESL, Sri Lanka
+
 Main outputs:
 
 ```text
@@ -977,3 +974,6 @@ processed/gold/outlet_january_2026_potential_gold.csv
 ```
 
 The project is structured to show the full process from raw data inspection to data cleaning, Gold feature integration, clustering, and final January 2026 outlet potential estimation.
+
+
+## 16. Contributors
