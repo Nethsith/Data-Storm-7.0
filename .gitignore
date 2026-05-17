@@ -1,11 +1,17 @@
 # Data files and large artifacts
 
-
+*.csv
 !raw data/
 !raw data/*.csv
 
+processed/
+geonames/
+provinces/
+worldpop_rasters/
+checkpoints/
 summaries/
 plots/
+submissions/
 # Notebook checkpoints
 .ipynb_checkpoints/
 
