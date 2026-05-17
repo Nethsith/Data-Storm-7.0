@@ -112,7 +112,9 @@ def run_script(step: dict) -> dict:
         cwd=ROOT,
         text=True,
         capture_output=True,
-    )
+        encoding="utf-8",
+        errors="replace",
+)
 
     runtime = round(time.time() - start, 2)
 
