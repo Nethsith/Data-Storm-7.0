@@ -26,6 +26,12 @@ SUBMISSION_DIR.mkdir(parents=True, exist_ok=True)
 
 PIPELINE_STEPS = [
     {
+        "name": "Step 0 - Download the Raw Data",
+        "script": "0.getting_raw_data.py",
+        "required": True,
+        
+    },
+    {
         "name": "Step 1 - Raw data inspection and initial summaries",
         "script": "1.read_data.py",
         "required": True,
@@ -47,7 +53,7 @@ PIPELINE_STEPS = [
     },
     {
         "name": "Step 5 - Holiday correction and demand context score",
-        "script": "6.holiday.py",
+        "script": "7.holiday.py",
         "required": True,
     },
     {
@@ -57,7 +63,7 @@ PIPELINE_STEPS = [
     },
     {
         "name": "Step 7 - Gold feature integration",
-        "script": "7.gold_data.py",
+        "script": "8.gold_data.py",
         "required": True,
     },
     {
