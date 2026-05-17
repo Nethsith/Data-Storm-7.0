@@ -4,7 +4,7 @@
 !raw data/
 !raw data/*.csv
 
-
+summaries/
 plots/
 # Notebook checkpoints
 .ipynb_checkpoints/
