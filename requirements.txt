@@ -6,3 +6,8 @@ xgboost
 geopandas
 shapely
 matplotlib
+tqdm
+rasterstats
+rasterio
+scipy
+pyarrow
