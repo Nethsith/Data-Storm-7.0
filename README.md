@@ -1,56 +1,68 @@
 # Data Storm v7.0 - Latent Outlet Potential Estimation
 
-This repository contains the code and pipeline used to estimate the Maximum Monthly Purchase Potential for traditional trade outlets (target date: January 2026).
+## 1. Project Overview
 
-## Quick summary
+This repository contains our solution for **Data Storm v7.0 - Preliminary Round**.
 
-- Pipeline entrypoint: `main.py` (run it from the project root).
-- Expected Python version: 3.11 (tested).
-- Install dependencies from `requirements.txt` before running.
-- Place competition datasets under the `raw data/` folder.
+The challenge objective is to estimate the **Maximum Monthly Purchase Potential** of each traditional trade outlet for **January 2026**.
 
-## Quick run (recommended)
+In this problem, outlet potential is not directly available as a target variable. Historical sales only show what an outlet actually sold, not what it could have sold under ideal conditions. Therefore, our solution treats outlet potential as a **latent ceiling** and estimates it through a combination of:
 
-Create and activate a virtual environment, install dependencies, then run the pipeline:
+- Data engineering and data-forensics checks
+- Bronze → Silver → Gold pipeline architecture
+- Transaction anomaly classification
+- Missing value handling
+- Holiday and seasonality feature engineering
+- External population-density enrichment
+- Outlet clustering
+- Cluster-level peer benchmarking
+- January 2026 adjustment factors
 
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-python -m pip install -r requirements.txt
+The final official output file is:
+
+```text
+submissions/Syntax_Sifters_predictions.csv
+```
+
+with the required columns:
+
+```text
+Outlet_ID
+Maximum_Monthly_Liters
+```
+
+---
+
+## 2. Quick Run Guide
+
+Run the full pipeline from the project root:
+
+```bash
 python main.py
 ```
 
-To run an individual script instead of the full pipeline:
+This will execute all scripts in the required order and generate the final prediction file.
 
-```powershell
-python scripts/1.read_data.py
+Final output:
+
+```text
+submissions/Syntax_Sifters_predictions.csv
 ```
 
-## Pipeline (what main.py runs)
+---
 
-`main.py` controls the pipeline and enforces a specific script order. Current expected steps (in `main.py`):
+## 3. Environment Setup
 
-1. `scripts/0.getting_raw_data.py` (download / fetch raw files, optional)
-2. `scripts/1.read_data.py` (raw data inspection, summaries)
-3. `scripts/2.miss_val.py` (missing-value checks)
-4. `scripts/3.silver_data.py` (silver-layer cleaning & anomalies)
-5. `scripts/5.outlet_size_imputation.py` (imputation)
-6. `scripts/7.holiday.py` (holiday corrections & demand context)
-7. `scripts/6.API.py` (population density / external APIs)
-8. `scripts/8.gold_data.py` (gold-feature integration)
-9. `scripts/9.model.py` (clustering + prediction)
+### 3.1 Clone Repository
 
-main.py will raise `FileNotFoundError` if a required script is missing; verify the `scripts/` folder contains the listed filenames.
+```bash
+git clone https://github.com/Nethsith/Data-Storm-7.0.git
+cd Data-Storm-7.0
+```
 
-## Expected outputs
+### 3.2 Create Virtual Environment
 
-- `processed/gold/outlet_modeling_table_gold.csv`
-- `processed/gold/outlet_january_2026_potential_gold.csv`
-- `submissions/teamname_predictions.csv` (final CSV formatted with `Outlet_ID`, `Maximum_Monthly_Liters`)
-
-## Install / dependencies
-
-Create a venv and install:
+For Windows:
 
 ```powershell
 python -m venv .venv
@@ -82,7 +94,15 @@ Notes:
 
 ## Required input files
 
-Place the competition datasets inside the `raw data/` folder. Typical required files:
+Place the competition datasets inside the `raw data/` folder.
+
+You can download them with:
+
+```bash
+python scripts/0.getting_raw_data.py
+```
+
+Expected files:
 
 ```text
 raw data/transactions_history_final.csv
@@ -94,39 +114,247 @@ raw data/holiday_list.csv
 
 ## Repository layout (top-level)
 
-```text
-./
-├── main.py
+Data-Storm-7.0/
+│
 ├── README.md
 ├── requirements.txt
+│
+│
 ├── scripts/
-├── raw data/
-├── processed/
-│   ├── bronze/
-│   ├── silver/
-│   └── gold/
-├── summaries/
-├── submissions/
-├── worldpop_rasters/
-├── geonames/
-└── checkpoints/
-```
+│   ├── 0.getting_raw_data.py
+│   ├── main.py
+│   ├── 1.read_data.py
+│   ├── 2.miss_val.py
+│   ├── 3.silver_data.py
+│   ├── 4.plot_seasonality.py
+│   ├── 5.outlet_size_imputation.py
+│   ├── 6.API.py
+│   ├── 6.holiday.py
+│   ├── 7.gold_data.py
+│   └── 9.model.py
+│
+└── notebook/
+    └── data_process.ipynb
 
-## Troubleshooting
-
-- If `python main.py` fails due to missing scripts, open the `scripts/` folder and ensure the filenames listed in `main.py` exist.
-- If geospatial packages fail to install on Windows, use conda: create a `conda` env and install `rasterio`, `fiona`, and `geopandas` from conda-forge.
-
-## Contact / Notes
-
-If you want, I can:
-
-- Run the pipeline (`python main.py`) and capture the logs.
-- Create a conda `environment.yml` for easier geospatial installs.
+Note: If the final prediction script name changes, update the script name inside `main.py` accordingly.
 
 ---
 
-Generated/updated to match the current repository contents and `main.py` pipeline.
+## 6. Full Pipeline Running Order
+
+The full pipeline is controlled by:
+
+```text
+main.py
+```
+
+It runs the following scripts in order:
+
+```text
+0. scripts/0.getting_raw_data.py
+1. scripts/1.read_data.py
+2. scripts/2.miss_val.py
+3. scripts/3.silver_data.py
+4. scripts/5.outlet_size_imputation.py
+5. scripts/6.holiday.py
+6. scripts/6.API.py
+7. scripts/7.gold_data.py
+8. scripts/9.model.py
+```
+
+Manual run order:
+
+```bash
+python scripts/1.read_data.py
+python scripts/2.miss_val.py
+python scripts/3.silver_data.py
+python scripts/5.outlet_size_imputation.py
+python scripts/6.holiday.py
+python scripts/6.API.py
+python scripts/7.gold_data.py
+python scripts/9.model.py
+```
+
+Optional EDA visualization:
+
+```bash
+python scripts/4.plot_seasonality.py
+```
+
+---
+
+## 7. End-to-End Workflow
+
+The project follows a **Bronze → Silver → Gold → Prediction** pipeline.
+
+```text
+Raw Data
+   ↓
+Bronze Layer
+   ↓
+Silver Layer
+   ↓
+Missing Value Handling
+   ↓
+Holiday + Seasonality Feature Engineering
+   ↓
+Population Density Enrichment
+   ↓
+Gold Layer
+   ↓
+Clustering + Potential Estimation
+   ↓
+Final Prediction CSV
+```
+
+---
+
+## 8. Layer Explanation
+
+## 8.1 Bronze Layer
+
+The Bronze layer preserves raw files as received.
+
+Purpose:
+
+- Keep original data unchanged
+- Provide traceability
+- Make it possible to compare raw data with cleaned data
+
+Typical output folder:
+
+```text
+processed/bronze/
+```
+
+---
+
+## 8.2 Silver Layer
+
+The Silver layer applies data cleaning, anomaly detection, and data-forensics checks.
+
+Main script:
+
+```text
+scripts/3.silver_data.py
+```
+
+Main actions:
+
+- Standardizes column names
+- Handles missing values and common null tokens
+- Detects duplicate records
+- Checks required fields
+- Corrects recoverable latitude/longitude swaps
+- Rejects invalid coordinate records
+- Classifies transactions into business-meaningful groups
+- Creates rejected records with documented reasons
+- Creates anomaly files for non-demand artifacts
+- Applies SKU-level price validation
+
+Important Silver outputs:
+
+```text
+processed/silver/outlet_master_silver.csv
+processed/silver/outlet_coordinates_silver.csv
+processed/silver/transactions_sales_silver.csv
+processed/silver/transactions_returns_silver.csv
+processed/rejected/
+processed/anomalies/
+```
+
+---
+
+## 8.3 Gold Layer
+
+The Gold layer integrates all cleaned and engineered datasets into model-ready files.
+
+Main script:
+
+```text
+scripts/7.gold_data.py
+```
+
+Gold does not clean raw data again. It reads already prepared Silver outputs and combines them into final modelling tables.
+
+Important Gold outputs:
+
+```text
+processed/gold/monthly_sales_gold.csv
+processed/gold/outlet_transaction_features_gold.csv
+processed/gold/outlet_features_gold.csv
+processed/gold/outlet_modeling_table_gold.csv
+```
+
+The most important file for the model is:
+
+```text
+processed/gold/outlet_modeling_table_gold.csv
+```
+
+---
+
+## 9. Script-by-Script Explanation
+
+## 9.1 `scripts/1.read_data.py`
+
+Purpose:
+
+- Reads raw CSV files
+- Checks available datasets
+- Creates initial dataset summaries
+- Reports row counts, column counts, data types, missing values, and sample values
+
+Main outputs:
+
+```text
+summaries/dataset_summary.csv
+summaries/column_summary.csv
+```
+
+---
+
+## 9.2 `scripts/2.miss_val.py`
+
+Purpose:
+
+- Performs missing-value checks
+- Helps understand which fields need cleaning, imputation, or further investigation
+- Supports initial EDA and data-quality understanding
+
+Main outputs:
+
+```text
+summaries/
+```
+
+---
+
+## 9.3 `scripts/3.silver_data.py`
+
+Purpose:
+
+Creates the cleaned Silver layer.
+
+Main cleaning and data-forensics work:
+
+### Outlet master
+
+- Cleans outlet categories
+- Standardizes `Outlet_Size`
+- Standardizes `Outlet_Type`
+- Handles missing or invalid values
+- Checks duplicate `Outlet_ID`
+
+### Outlet coordinates
+
+- Validates latitude and longitude ranges
+- Corrects swapped latitude/longitude values when recoverable
+- Rejects invalid coordinates that cannot be corrected
+
+### Transactions
+
+Transactions are classified into:
 
 ```text
 Positive sales:
@@ -426,6 +654,17 @@ Final Potential >= outlet's own historical January peak
 Final Potential <= cluster January upper cap
 ```
 
+---
+
+## 10. Contributors
+
+### Team: Syntax Sifters
+
+- **Nethsith Gunaweena**
+- **Thilokya Angeesa**
+
+Rotaract Club of IESL, Sri Lanka
+
 Main outputs:
 
 ```text
@@ -706,3 +945,6 @@ processed/gold/outlet_january_2026_potential_gold.csv
 ```
 
 The project is structured to show the full process from raw data inspection to data cleaning, Gold feature integration, clustering, and final January 2026 outlet potential estimation.
+
+
+## 16. Contributors
