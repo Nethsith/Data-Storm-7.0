@@ -17,9 +17,6 @@ Zero-population handling (1 km only)
     / forest pixels in the WorldPop raster. With 1 km only, we keep these as
     zero and label them for audit.
 
-    A new column  `pop_source` records how each value was obtained:
-        "raster_1km" | "zero_flagged"
-
 Architecture
 ────────────
   1. Load coordinates
@@ -186,7 +183,7 @@ def attach_province(df: pd.DataFrame) -> pd.DataFrame:
         "Kalutara": "Western",
         "Kandy": "Central",
         "Matale": "Central",
-        "NuwaraEliya": "Central",
+        "Nuwara Eliya": "Central",
         "Galle": "Southern",
         "Matara": "Southern",
         "Hambantota": "Southern",
@@ -509,6 +506,8 @@ def visualise_aggregate(df: pd.DataFrame, output_path: str = "plots/density_aggr
     ax.legend(fontsize=9)
     plt.xticks(rotation=45, ha="right", fontsize=8)
     plt.tight_layout()
+    output_dir = Path(output_path).parent
+    output_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     log.info("Aggregate chart → %s", output_path)
     plt.show()
@@ -545,6 +544,8 @@ def visualise_top_locations(
     ax.legend(fontsize=7, ncol=2)
     plt.xticks(rotation=45, ha="right", fontsize=8)
     plt.tight_layout()
+    output_dir = Path(output_path).parent
+    output_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     log.info("Top-locations chart → %s", output_path)
     plt.show()

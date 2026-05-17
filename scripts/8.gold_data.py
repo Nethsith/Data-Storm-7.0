@@ -777,7 +777,14 @@ def build_return_features(returns: pd.DataFrame) -> pd.DataFrame:
 # BUILD OUTLET GOLD
 # ============================================================
 
-def build_outlet_gold(outlet_master, outlet_coordinates, outlet_features, return_features, billing_features):
+def build_outlet_gold(
+    outlet_master,
+    outlet_coordinates,
+    outlet_features,
+    return_features,
+    billing_features,
+    main_distributor=None,
+):
     outlet_gold = outlet_master.merge(
         outlet_coordinates,
         on="Outlet_ID",
@@ -811,6 +818,13 @@ def build_outlet_gold(outlet_master, outlet_coordinates, outlet_features, return
         on="Outlet_ID",
         how="left"
     )
+
+    if main_distributor is not None and "Distributor_ID" not in outlet_gold.columns:
+        outlet_gold = outlet_gold.merge(
+            main_distributor,
+            on="Outlet_ID",
+            how="left"
+        )
 
     return outlet_gold
 
@@ -999,6 +1013,23 @@ def add_january_2026_context(outlet_gold, holidays, seasonality, context_score, 
 # ============================================================
 
 def final_clean_and_save(monthly_sales, outlet_features, outlet_gold):
+    # Ensure expected numeric columns exist for downstream ratios.
+    for col in [
+        "return_record_count",
+        "return_liters_abs",
+        "return_value_abs",
+        "return_month_count",
+        "return_sku_count",
+        "total_liters",
+        "total_bill_value",
+        "billing_anomaly_count",
+        "zero_volume_positive_bill_count",
+        "positive_volume_zero_bill_count",
+        "zero_volume_zero_bill_count",
+    ]:
+        if col not in outlet_gold.columns:
+            outlet_gold[col] = 0
+
     numeric_zero_cols = [
         "avg_monthly_liters",
         "median_monthly_liters",
@@ -1215,7 +1246,8 @@ def run_gold_data_pipeline():
         outlet_coordinates=data["outlet_coordinates"],
         outlet_features=outlet_transaction_features,
         return_features=return_features,
-        billing_features=data["billing_features"]
+        billing_features=data["billing_features"],
+        main_distributor=main_distributor,
     )
 
     outlet_gold = add_january_2026_context(

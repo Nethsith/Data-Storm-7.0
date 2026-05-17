@@ -47,7 +47,7 @@ PIPELINE_STEPS = [
     },
     {
         "name": "Step 5 - Holiday correction and demand context score",
-        "script": "6.holiday.py",
+        "script": "7.holiday.py",
         "required": True,
     },
     {
@@ -57,12 +57,12 @@ PIPELINE_STEPS = [
     },
     {
         "name": "Step 7 - Gold feature integration",
-        "script": "7.gold_data.py",
+        "script": "8.gold_data.py",
         "required": True,
     },
     {
         "name": "Step 8 - Clustering and January 2026 potential prediction",
-        "script": "8.prediction.py",
+        "script": "9.model.py",
         "required": True,
     },
 ]
@@ -110,25 +110,15 @@ def run_script(step: dict) -> dict:
     completed = subprocess.run(
         [sys.executable, str(script_path)],
         cwd=ROOT,
-        text=True,
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-)
+    )
 
     runtime = round(time.time() - start, 2)
 
     result["runtime_seconds"] = runtime
 
-    if completed.stdout:
-        print(completed.stdout)
-
-    if completed.stderr:
-        print(completed.stderr)
-
     if completed.returncode != 0:
         result["status"] = "failed"
-        result["error"] = completed.stderr[-2000:] if completed.stderr else "Unknown error"
+        result["error"] = f"Exit code {completed.returncode}"
         raise RuntimeError(f"{step['script']} failed. Check terminal output.")
 
     result["status"] = "success"
