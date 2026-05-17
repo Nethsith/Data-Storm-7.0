@@ -4,7 +4,8 @@
 !raw data/
 !raw data/*.csv
 
-processed/*
+# Folders
+processed/
 geonames/
 provinces/
 worldpop_rasters/
@@ -12,6 +13,7 @@ checkpoints/
 summaries/
 plots/
 submissions/
+
 # Notebook checkpoints
 .ipynb_checkpoints/
 
@@ -24,3 +26,9 @@ __pycache__/
 *.pyc
 .vscode/
 .venv/
+
+# Model and release artifacts
+*.joblib
+*.zip
+*.log
+.env
