@@ -477,7 +477,7 @@ def save_results(df: pd.DataFrame, path: str = OUTPUT_CSV) -> None:
 # ─────────────────────────────────────────────
 # STEP 9 — VISUALISE
 # ─────────────────────────────────────────────
-def visualise_aggregate(df: pd.DataFrame, output_path: str = "density_aggregate.png") -> None:
+def visualise_aggregate(df: pd.DataFrame, output_path: str = "plots/density_aggregate.png") -> None:
     df      = df.copy()
     df["month"] = pd.to_datetime(df["month"])
     plot_df = df
@@ -517,7 +517,7 @@ def visualise_aggregate(df: pd.DataFrame, output_path: str = "density_aggregate.
 def visualise_top_locations(
     df: pd.DataFrame,
     n: int = 10,
-    output_path: str = "density_top_locations.png",
+    output_path: str = "plots/density_top_locations.png",
 ) -> None:
     df = df.copy()
     df["month"] = pd.to_datetime(df["month"])
@@ -655,12 +655,12 @@ def main(use_api: bool = False, flask_port: int = 5000) -> pd.DataFrame:
     # save_zero_report(density_df, ZERO_REPORT_CSV)
 
     # 6. Summary
-    print("\n── Summary ──")
+    print("\n-- Summary --")
     print(f"  Locations  : {density_df.location_name.nunique():,}")
     print(f"  Months     : {density_df.month.nunique()}")
     print(f"  Total rows : {len(density_df):,}")
     print(f"  Elapsed    : {(time.time() - t0) / 60:.1f} min")
-    print("\n── Sample (5 rows) ──")
+    print("\n-- Sample (5 rows) --")
     print(
         density_df[[
             "location_name", "month", "base_population",
