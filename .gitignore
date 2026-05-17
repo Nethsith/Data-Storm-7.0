@@ -9,6 +9,7 @@ plots/
 submissions/
 raw data/
 
+
 # all the csv files (locations, geonames, provinces, worldpop summaries)
 *.csv
 
