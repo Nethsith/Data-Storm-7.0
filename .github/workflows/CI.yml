@@ -57,7 +57,7 @@ jobs:
           
       - name: Run pipeline scripts Gold Data
         run: |
-          python -u scripts/7.gold_data.py
+          python -u scripts/8.gold_data.py
           
       - name: Run pipeline scripts Model
         run: |
