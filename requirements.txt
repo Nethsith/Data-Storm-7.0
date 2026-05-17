@@ -11,3 +11,4 @@ rasterstats
 rasterio
 scipy
 pyarrow
+kagglehub

@@ -1,9 +1,3 @@
-# Data files and large artifacts
-
-*.csv
-!raw data/
-!raw data/*.csv
-
 # Folders
 processed/
 geonames/
@@ -13,6 +7,7 @@ checkpoints/
 summaries/
 plots/
 submissions/
+raw data/
 
 # Notebook checkpoints
 .ipynb_checkpoints/
