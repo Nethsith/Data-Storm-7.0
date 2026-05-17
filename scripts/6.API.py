@@ -510,7 +510,7 @@ def visualise_aggregate(df: pd.DataFrame, output_path: str = "plots/density_aggr
     output_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     log.info("Aggregate chart → %s", output_path)
-    plt.show()
+    # plt.show()
 
 
 def visualise_top_locations(
@@ -548,7 +548,7 @@ def visualise_top_locations(
     output_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     log.info("Top-locations chart → %s", output_path)
-    plt.show()
+    # plt.show()
 
 
 # ─────────────────────────────────────────────
