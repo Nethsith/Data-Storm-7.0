@@ -20,7 +20,7 @@ SUBMISSION_DIR.mkdir(parents=True, exist_ok=True)
 # PIPELINE ORDER
 # ============================================================
 # Important:
-# - 7.gold_data.py and 8.prediction.py must exist before running main.py.
+# - 7.gold_data.py and 9.model.py must exist before running main.py.
 # - 4.plot_seasonality.py is EDA/visualization, so it is not mandatory for final prediction.
 #   Keep it in repo as evidence, but do not block final model run with plotting.
 
@@ -47,7 +47,7 @@ PIPELINE_STEPS = [
     },
     {
         "name": "Step 5 - Holiday correction and demand context score",
-        "script": "7.holiday.py",
+        "script": "6.holiday.py",
         "required": True,
     },
     {
@@ -57,7 +57,7 @@ PIPELINE_STEPS = [
     },
     {
         "name": "Step 7 - Gold feature integration",
-        "script": "8.gold_data.py",
+        "script": "7.gold_data.py",
         "required": True,
     },
     {

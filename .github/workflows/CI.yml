@@ -24,6 +24,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Download Kaggle raw data
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          python -u scripts/0.getting_raw_data.py
+
       - name: Run pipeline scripts Read Data
         run: |
           python -u scripts/1.read_data.py
